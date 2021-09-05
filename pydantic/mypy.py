@@ -57,7 +57,6 @@ from mypy.types import (
     Type,
     TypeOfAny,
     TypeType,
-    TypeVarDef,
     TypeVarType,
     UnionType,
     get_proper_type,
@@ -352,7 +351,7 @@ class PydanticModelTransformer:
         obj_type = ctx.api.named_type('__builtins__.object')
         self_tvar_name = '_PydanticBaseModel'  # Make sure it does not conflict with other names in the class
         tvar_fullname = ctx.cls.fullname + '.' + self_tvar_name
-        tvd = TypeVarDef(self_tvar_name, tvar_fullname, -1, [], obj_type)
+        tvd = TypeVarType(self_tvar_name, tvar_fullname, -1, [], obj_type)
         self_tvar_expr = TypeVarExpr(self_tvar_name, tvar_fullname, [], obj_type)
         ctx.cls.info.names[self_tvar_name] = SymbolTableNode(MDEF, self_tvar_expr)
         self_type = TypeVarType(tvd)
@@ -614,7 +613,7 @@ def add_method(
     args: List[Argument],
     return_type: Type,
     self_type: Optional[Type] = None,
-    tvar_def: Optional[TypeVarDef] = None,
+    tvar_def: Optional[TypeVarType] = None,
     is_classmethod: bool = False,
     is_new: bool = False,
     # is_staticmethod: bool = False,
