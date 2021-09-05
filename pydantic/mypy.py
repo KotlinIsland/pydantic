@@ -354,7 +354,7 @@ class PydanticModelTransformer:
         tvd = TypeVarType(self_tvar_name, tvar_fullname, -1, [], obj_type)
         self_tvar_expr = TypeVarExpr(self_tvar_name, tvar_fullname, [], obj_type)
         ctx.cls.info.names[self_tvar_name] = SymbolTableNode(MDEF, self_tvar_expr)
-        self_type = TypeVarType(tvd)
+        self_type = tvd
         add_method(
             ctx,
             'construct',
