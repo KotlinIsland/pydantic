@@ -188,11 +188,16 @@ def _process_class(
         cls.__name__, __config__=config, __module__=_cls.__module__, __validators__=validators, **field_definitions
     )
 
-    if getattr(config, 'extra', Extra.forbid) is not Extra.forbid:
+    extra = getattr(config, 'extra', Extra.forbid)
+    if extra is not Extra.forbid:
         def allow_extra_init(self, *args, **kwargs):
             self.__original_init__(*args, **{
                 k: v for k, v in kwargs.items() if k in get_type_hints(type(self))
             })
+            if extra is Extra.allow:
+                for key, value in kwargs.items():
+                    if not hasattr(self, key):
+                        setattr(self, key, value)
 
         cls.__original_init__ = cls.__init__
         cls.__init__ = allow_extra_init
