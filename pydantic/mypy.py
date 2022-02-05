@@ -70,6 +70,8 @@ BASEMODEL_FULLNAME = 'pydantic.main.BaseModel'
 BASESETTINGS_FULLNAME = 'pydantic.env_settings.BaseSettings'
 FIELD_FULLNAME = 'pydantic.fields.Field'
 DATACLASS_FULLNAME = 'pydantic.dataclasses.dataclass'
+MYPY_VERSION = tuple(int(part) for part in mypy_version.split('+')[0].split('.'))
+BUILTINS_NAME = 'builtins' if MYPY_VERSION >= (0, 930) else '__builtins__'
 
 
 def plugin(version: str) -> 'TypingType[Plugin]':
