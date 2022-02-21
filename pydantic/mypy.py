@@ -63,6 +63,7 @@ from mypy.types import (
 )
 from mypy.typevars import fill_typevars
 from mypy.util import get_unique_redefinition_name
+from mypy.version import __version__ as mypy_version
 
 CONFIGFILE_KEY = 'pydantic-mypy'
 METADATA_KEY = 'pydantic-mypy-metadata'
