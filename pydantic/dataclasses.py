@@ -66,7 +66,7 @@ if TYPE_CHECKING:
         __pydantic_validate_values__: ClassVar[Callable[['Dataclass'], None]]
         __pydantic_has_field_info_default__: ClassVar[bool]  # whether a `pydantic.Field` is used as default value
 
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
+        def __init__(self, *args: object, **kwargs: object) -> None:
             pass
 
         @classmethod
@@ -86,6 +86,8 @@ __all__ = [
     'make_dataclass_validator',
 ]
 
+_T = TypeVar("_T")
+
 if sys.version_info >= (3, 10):
 
     @__dataclass_transform__(kw_only_default=True, field_descriptors=(Field, FieldInfo))
@@ -98,16 +100,16 @@ if sys.version_info >= (3, 10):
         order: bool = False,
         unsafe_hash: bool = False,
         frozen: bool = False,
-        config: Union[ConfigDict, Type[Any], None] = None,
+        config: Union[ConfigDict, Type[object], None] = None,
         validate_on_init: Optional[bool] = None,
         kw_only: bool = ...,
-    ) -> Callable[[Type[Any]], 'DataclassClassOrWrapper']:
+    ) -> Callable[[Type[_T]], 'DataclassClassOrWrapper']:
         ...
 
     @__dataclass_transform__(kw_only_default=True, field_descriptors=(Field, FieldInfo))
     @overload
     def dataclass(
-        _cls: Type[Any],
+        _cls: Type[_T],
         *,
         init: bool = True,
         repr: bool = True,
@@ -115,7 +117,7 @@ if sys.version_info >= (3, 10):
         order: bool = False,
         unsafe_hash: bool = False,
         frozen: bool = False,
-        config: Union[ConfigDict, Type[Any], None] = None,
+        config: Union[ConfigDict, Type[object], None] = None,
         validate_on_init: Optional[bool] = None,
         kw_only: bool = ...,
     ) -> 'DataclassClassOrWrapper':
@@ -133,15 +135,15 @@ else:
         order: bool = False,
         unsafe_hash: bool = False,
         frozen: bool = False,
-        config: Union[ConfigDict, Type[Any], None] = None,
+        config: Union[ConfigDict, Type[object], None] = None,
         validate_on_init: Optional[bool] = None,
-    ) -> Callable[[Type[Any]], 'DataclassClassOrWrapper']:
+    ) -> Callable[[Type[_T]], 'DataclassClassOrWrapper']:
         ...
 
     @__dataclass_transform__(kw_only_default=True, field_descriptors=(Field, FieldInfo))
     @overload
     def dataclass(
-        _cls: Type[Any],
+        _cls: Type[_T],
         *,
         init: bool = True,
         repr: bool = True,
@@ -149,7 +151,7 @@ else:
         order: bool = False,
         unsafe_hash: bool = False,
         frozen: bool = False,
-        config: Union[ConfigDict, Type[Any], None] = None,
+        config: Union[ConfigDict, Type[object], None] = None,
         validate_on_init: Optional[bool] = None,
     ) -> 'DataclassClassOrWrapper':
         ...
@@ -157,7 +159,7 @@ else:
 
 @__dataclass_transform__(kw_only_default=True, field_descriptors=(Field, FieldInfo))
 def dataclass(
-    _cls: Optional[Type[Any]] = None,
+    _cls: Optional[Type[_T]] = None,
     *,
     init: bool = True,
     repr: bool = True,
@@ -165,10 +167,10 @@ def dataclass(
     order: bool = False,
     unsafe_hash: bool = False,
     frozen: bool = False,
-    config: Union[ConfigDict, Type[Any], None] = None,
+    config: Union[ConfigDict, Type[object], None] = None,
     validate_on_init: Optional[bool] = None,
     kw_only: bool = False,
-) -> Union[Callable[[Type[Any]], 'DataclassClassOrWrapper'], 'DataclassClassOrWrapper']:
+) -> Union[Callable[[Type[_T]], 'DataclassClassOrWrapper'], 'DataclassClassOrWrapper']:
     """
     Like the python standard lib dataclasses but with type validation.
     The result is either a pydantic dataclass that will validate input data

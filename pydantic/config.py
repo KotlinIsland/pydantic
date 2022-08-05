@@ -2,7 +2,7 @@ import json
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, ForwardRef, Optional, Tuple, Type, Union
 
-from .typing import AnyCallable
+from .typing import AnyCallable, AnyArgAnyCallable
 from .utils import GetterDict
 from .version import compiled
 
@@ -62,10 +62,10 @@ if not compiled:
         getter_dict: Type[GetterDict]
         alias_generator: Optional[Callable[[str], str]]
         keep_untouched: Tuple[type, ...]
-        schema_extra: Union[Dict[str, Any], 'SchemaExtraCallable']
-        json_loads: Callable[[str], Any]
-        json_dumps: Callable[..., str]
-        json_encoders: Dict[Type[Any], AnyCallable]
+        schema_extra: Union[Dict[str, object], 'SchemaExtraCallable']
+        json_loads: Callable[[str], object]
+        json_dumps: AnyArgAnyCallable[str]
+        json_encoders: Dict[Type[object], AnyCallable]
         underscore_attrs_are_private: bool
 
         # whether or not inherited models as fields should be reconstructed as base model
