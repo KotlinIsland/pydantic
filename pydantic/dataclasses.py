@@ -48,6 +48,8 @@ from .main import create_model, validate_model
 from .utils import ClassAttribute
 
 if TYPE_CHECKING:
+    import dataclasses
+
     from .main import BaseModel
     from .typing import CallableGenerator, NoArgAnyCallable
 
@@ -91,80 +93,78 @@ __all__ = [
 
 _T = TypeVar('_T')
 
-if sys.version_info >= (3, 10):
+if TYPE_CHECKING:
+    if sys.version_info >= (3, 10):
 
-    @dataclass_transform(kw_only_default=True, field_specifiers=(Field, FieldInfo))
-    @overload
-    def dataclass(
-        *,
-        init: bool = True,
-        repr: bool = True,
-        eq: bool = True,
-        order: bool = False,
-        unsafe_hash: bool = False,
-        frozen: bool = False,
-        config: Union[ConfigDict, Type[object], None] = None,
-        validate_on_init: Optional[bool] = None,
-        use_proxy: Optional[bool] = None,
-        kw_only: bool = ...,
-    ) -> Callable[[Type[_T]], 'DataclassClassOrWrapper']:
-        ...
+        @dataclass_transform(field_specifiers=(dataclasses.field, Field))
+        @overload
+        def dataclass(
+            *,
+            init: bool = True,
+            repr: bool = True,
+            eq: bool = True,
+            order: bool = False,
+            unsafe_hash: bool = False,
+            frozen: bool = False,
+            config: Union[ConfigDict, Type[object], None] = None,
+            validate_on_init: Optional[bool] = None,
+            use_proxy: Optional[bool] = None,
+            kw_only: bool = ...,
+        ) -> Callable[[Type[_T]], 'DataclassClassOrWrapper']:
+            ...
 
-    @dataclass_transform(kw_only_default=True, field_specifiers=(Field, FieldInfo))
-    @overload
-    def dataclass(
-        _cls: Type[_T],
-        *,
-        init: bool = True,
-        repr: bool = True,
-        eq: bool = True,
-        order: bool = False,
-        unsafe_hash: bool = False,
-        frozen: bool = False,
-        config: Union[ConfigDict, Type[object], None] = None,
-        validate_on_init: Optional[bool] = None,
-        use_proxy: Optional[bool] = None,
-        kw_only: bool = ...,
-    ) -> 'DataclassClassOrWrapper':
-        ...
+        @overload
+        def dataclass(
+            _cls: Type[_T],
+            *,
+            init: bool = True,
+            repr: bool = True,
+            eq: bool = True,
+            order: bool = False,
+            unsafe_hash: bool = False,
+            frozen: bool = False,
+            config: Union[ConfigDict, Type[object], None] = None,
+            validate_on_init: Optional[bool] = None,
+            use_proxy: Optional[bool] = None,
+            kw_only: bool = ...,
+        ) -> 'DataclassClassOrWrapper':
+            ...
 
-else:
+    else:
 
-    @dataclass_transform(kw_only_default=True, field_specifiers=(Field, FieldInfo))
-    @overload
-    def dataclass(
-        *,
-        init: bool = True,
-        repr: bool = True,
-        eq: bool = True,
-        order: bool = False,
-        unsafe_hash: bool = False,
-        frozen: bool = False,
-        config: Union[ConfigDict, Type[object], None] = None,
-        validate_on_init: Optional[bool] = None,
-        use_proxy: Optional[bool] = None,
-    ) -> Callable[[Type[_T]], 'DataclassClassOrWrapper']:
-        ...
+        @dataclass_transform(field_specifiers=(dataclasses.field, Field))
+        @overload
+        def dataclass(
+            *,
+            init: bool = True,
+            repr: bool = True,
+            eq: bool = True,
+            order: bool = False,
+            unsafe_hash: bool = False,
+            frozen: bool = False,
+            config: Union[ConfigDict, Type[object], None] = None,
+            validate_on_init: Optional[bool] = None,
+            use_proxy: Optional[bool] = None,
+            ) -> Callable[[Type[_T]], 'DataclassClassOrWrapper']:
+                ...
 
-    @dataclass_transform(kw_only_default=True, field_specifiers=(Field, FieldInfo))
-    @overload
-    def dataclass(
-        _cls: Type[_T],
-        *,
-        init: bool = True,
-        repr: bool = True,
-        eq: bool = True,
-        order: bool = False,
-        unsafe_hash: bool = False,
-        frozen: bool = False,
-        config: Union[ConfigDict, Type[object], None] = None,
-        validate_on_init: Optional[bool] = None,
-        use_proxy: Optional[bool] = None,
-    ) -> 'DataclassClassOrWrapper':
-        ...
+        @overload
+        def dataclass(
+            _cls: Type[_T],
+            *,
+            init: bool = True,
+            repr: bool = True,
+            eq: bool = True,
+            order: bool = False,
+            unsafe_hash: bool = False,
+            frozen: bool = False,
+            config: Union[ConfigDict, Type[object], None] = None,
+            validate_on_init: Optional[bool] = None,
+            use_proxy: Optional[bool] = None,
+            ) -> 'DataclassClassOrWrapper':
+                ...
 
 
-@dataclass_transform(kw_only_default=True, field_specifiers=(Field, FieldInfo))
 def dataclass(
     _cls: Optional[Type[_T]] = None,
     *,
