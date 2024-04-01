@@ -6,6 +6,10 @@ from pydantic_core import PydanticCustomError
 from pydantic import BaseModel, ValidationError
 from pydantic.color import Color
 
+pytestmark = pytest.mark.filterwarnings(
+    'ignore:The `Color` class is deprecated, use `pydantic_extra_types` instead.*:DeprecationWarning'
+)
+
 
 @pytest.mark.parametrize(
     'raw_color, as_tuple',
@@ -124,8 +128,8 @@ def test_model_validation():
     assert Model(color=Color('red')).color.as_hex() == '#f00'
     with pytest.raises(ValidationError) as exc_info:
         Model(color='snot')
-    # insert_assert(exc_info.value.errors())
-    assert exc_info.value.errors() == [
+    # insert_assert(exc_info.value.errors(include_url=False))
+    assert exc_info.value.errors(include_url=False) == [
         {
             'type': 'color_error',
             'loc': ('color',),

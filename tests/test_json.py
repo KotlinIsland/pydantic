@@ -7,23 +7,41 @@ from decimal import Decimal
 from enum import Enum
 from ipaddress import IPv4Address, IPv4Interface, IPv4Network, IPv6Address, IPv6Interface, IPv6Network
 from pathlib import Path
-from typing import Generator, Optional, Pattern
+from typing import Any, Generator, List, Optional, Pattern, Union
 from uuid import UUID
 
 import pytest
-from pydantic_core import SchemaSerializer
+from pydantic_core import CoreSchema, SchemaSerializer, core_schema
+from typing_extensions import Annotated
 
-from pydantic import BaseModel, ConfigDict, NameEmail, serializer
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    GetCoreSchemaHandler,
+    GetJsonSchemaHandler,
+    NameEmail,
+    PlainSerializer,
+)
+from pydantic._internal._config import ConfigWrapper
 from pydantic._internal._generate_schema import GenerateSchema
 from pydantic.color import Color
 from pydantic.dataclasses import dataclass as pydantic_dataclass
-from pydantic.json import pydantic_encoder, timedelta_isoformat
+from pydantic.deprecated.json import pydantic_encoder, timedelta_isoformat
+from pydantic.functional_serializers import (
+    field_serializer,
+)
+from pydantic.json_schema import JsonSchemaValue
+from pydantic.type_adapter import TypeAdapter
 from pydantic.types import DirectoryPath, FilePath, SecretBytes, SecretStr, condecimal
 
 try:
     import email_validator
 except ImportError:
     email_validator = None
+
+
+pytestmark = pytest.mark.filterwarnings('ignore::DeprecationWarning')
 
 
 class MyEnum(Enum):
@@ -39,7 +57,7 @@ class MyModel(BaseModel):
 @pytest.mark.parametrize(
     'ser_type,gen_value,json_output',
     [
-        (UUID, lambda: 'ebcdab58-6eb8-46fb-a190-d07a33e9eac8', b'"ebcdab58-6eb8-46fb-a190-d07a33e9eac8"'),
+        (UUID, lambda: UUID('ebcdab58-6eb8-46fb-a190-d07a33e9eac8'), b'"ebcdab58-6eb8-46fb-a190-d07a33e9eac8"'),
         (IPv4Address, lambda: '192.168.0.1', b'"192.168.0.1"'),
         (Color, lambda: Color('#000'), b'"black"'),
         (Color, lambda: Color((1, 12, 123)), b'"#010c7b"'),
@@ -69,15 +87,14 @@ class MyModel(BaseModel):
     ],
 )
 def test_json_serialization(ser_type, gen_value, json_output):
-    gen = GenerateSchema(False, None)
-    schema = gen.generate_schema(ser_type)
-    serializer = SchemaSerializer(schema)
-    assert serializer.to_json(gen_value()) == json_output
+    ta: TypeAdapter[Any] = TypeAdapter(ser_type)
+    assert ta.dump_json(gen_value()) == json_output
 
 
 @pytest.mark.skipif(not email_validator, reason='email_validator not installed')
 def test_json_serialization_email():
-    gen = GenerateSchema(False, None)
+    config_wrapper = ConfigWrapper({'arbitrary_types_allowed': False})
+    gen = GenerateSchema(config_wrapper, None)
     schema = gen.generate_schema(NameEmail)
     serializer = SchemaSerializer(schema)
     assert serializer.to_json(NameEmail('foo bar', 'foobaR@example.com')) == b'"foo bar <foobaR@example.com>"'
@@ -111,15 +128,20 @@ def test_model_encoding():
         c: Decimal
         d: ModelA
 
-    m = Model(a=10.2, b='foobar', c=10.2, d={'x': 123, 'y': '123'})
+    m = Model(a=10.2, b='foobar', c='10.2', d={'x': 123, 'y': '123'})
     assert m.model_dump() == {'a': 10.2, 'b': b'foobar', 'c': Decimal('10.2'), 'd': {'x': 123, 'y': '123'}}
-    assert m.model_dump_json() == b'{"a":10.2,"b":"foobar","c":"10.2","d":{"x":123,"y":"123"}}'
-    assert m.model_dump_json(exclude={'b'}) == b'{"a":10.2,"c":"10.2","d":{"x":123,"y":"123"}}'
+    assert m.model_dump_json() == '{"a":10.2,"b":"foobar","c":"10.2","d":{"x":123,"y":"123"}}'
+    assert m.model_dump_json(exclude={'b'}) == '{"a":10.2,"c":"10.2","d":{"x":123,"y":"123"}}'
 
 
 def test_subclass_encoding():
     class SubDate(datetime):
-        pass
+        @classmethod
+        def __get_pydantic_core_schema__(cls, source_type: Any, handler: GetCoreSchemaHandler) -> CoreSchema:
+            def val(v: datetime) -> SubDate:
+                return SubDate.fromtimestamp(v.timestamp())
+
+            return core_schema.no_info_after_validator_function(val, handler(datetime))
 
     class Model(BaseModel):
         a: datetime
@@ -127,21 +149,31 @@ def test_subclass_encoding():
 
     m = Model(a=datetime(2032, 1, 1, 1, 1), b=SubDate(2020, 2, 29, 12, 30))
     assert m.model_dump() == {'a': datetime(2032, 1, 1, 1, 1), 'b': SubDate(2020, 2, 29, 12, 30)}
-    assert m.model_dump_json() == b'{"a":"2032-01-01T01:01:00","b":"2020-02-29T12:30:00"}'
+    assert m.model_dump_json() == '{"a":"2032-01-01T01:01:00","b":"2020-02-29T12:30:00"}'
 
 
 def test_subclass_custom_encoding():
     class SubDt(datetime):
-        pass
+        @classmethod
+        def __get_pydantic_core_schema__(cls, source_type: Any, handler: GetCoreSchemaHandler) -> CoreSchema:
+            def val(v: datetime) -> SubDt:
+                return SubDt.fromtimestamp(v.timestamp())
+
+            return core_schema.no_info_after_validator_function(val, handler(datetime))
 
     class SubDelta(timedelta):
-        pass
+        @classmethod
+        def __get_pydantic_core_schema__(cls, source_type: Any, handler: GetCoreSchemaHandler) -> CoreSchema:
+            def val(v: timedelta) -> SubDelta:
+                return cls(seconds=v.total_seconds())
+
+            return core_schema.no_info_after_validator_function(val, handler(timedelta))
 
     class Model(BaseModel):
         a: SubDt
         b: SubDelta
 
-        @serializer('a', when_used='json')
+        @field_serializer('a', when_used='json')
         def serialize_a(self, v: SubDt, _info):
             return v.strftime('%a, %d %b %C %H:%M:%S')
 
@@ -150,7 +182,7 @@ def test_subclass_custom_encoding():
     m = Model(a=SubDt(2032, 1, 1, 1, 1), b=SubDelta(hours=100))
     assert m.model_dump() == {'a': SubDt(2032, 1, 1, 1, 1), 'b': SubDelta(days=4, seconds=14400)}
     assert m.model_dump(mode='json') == {'a': 'Thu, 01 Jan 20 01:01:00', 'b': 360000.0}
-    assert m.model_dump_json() == b'{"a":"Thu, 01 Jan 20 01:01:00","b":360000.0}'
+    assert m.model_dump_json() == '{"a":"Thu, 01 Jan 20 01:01:00","b":360000.0}'
 
 
 def test_invalid_model():
@@ -180,15 +212,15 @@ def test_custom_encoder():
         y: Decimal
         z: date
 
-        @serializer('x')
+        @field_serializer('x')
         def serialize_x(self, v: timedelta, _info):
             return f'{v.total_seconds():0.3f}s'
 
-        @serializer('y')
+        @field_serializer('y')
         def serialize_y(self, v: Decimal, _info):
             return 'a decimal'
 
-    assert Model(x=123, y=5, z='2032-06-01').model_dump_json() == b'{"x":"123.000s","y":"a decimal","z":"2032-06-01"}'
+    assert Model(x=123, y=5, z='2032-06-01').model_dump_json() == '{"x":"123.000s","y":"a decimal","z":"2032-06-01"}'
 
 
 def test_iso_timedelta_simple():
@@ -197,7 +229,7 @@ def test_iso_timedelta_simple():
 
     m = Model(x=123)
     json_data = m.model_dump_json()
-    assert json_data == b'{"x":"PT123S"}'
+    assert json_data == '{"x":"PT2M3S"}'
     assert Model.model_validate_json(json_data).x == timedelta(seconds=123)
 
 
@@ -211,7 +243,7 @@ def test_con_decimal_encode() -> None:
         id: condecimal(gt=0, max_digits=22, decimal_places=0)
         price: Decimal = Decimal('0.01')
 
-    json_data = b'{"id":"1","price":"0.01"}'
+    json_data = '{"id":"1","price":"0.01"}'
     assert Obj(id=1).model_dump_json() == json_data
     assert Obj.model_validate_json(json_data) == Obj(id=1)
 
@@ -221,32 +253,16 @@ def test_json_encoder_simple_inheritance():
         dt: datetime = datetime.now()
         timedt: timedelta = timedelta(hours=100)
 
-        @serializer('dt')
+        @field_serializer('dt')
         def serialize_dt(self, _v: datetime, _info):
             return 'parent_encoder'
 
     class Child(Parent):
-        @serializer('timedt')
+        @field_serializer('timedt')
         def serialize_timedt(self, _v: timedelta, _info):
             return 'child_encoder'
 
-    assert Child().model_dump_json() == b'{"dt":"parent_encoder","timedt":"child_encoder"}'
-
-
-def test_json_encoder_inheritance_override():
-    class Parent(BaseModel):
-        dt: datetime = datetime.now()
-
-        @serializer('dt')
-        def serialize_dt(self, _v: datetime, _info):
-            return 'parent_encoder'
-
-    class Child(Parent):
-        @serializer('dt')
-        def serialize_dt(self, _v: datetime, _info):
-            return 'child_encoder'
-
-    assert Child().model_dump_json() == b'{"dt":"child_encoder"}'
+    assert Child().model_dump_json() == '{"dt":"parent_encoder","timedt":"child_encoder"}'
 
 
 def test_encode_dataclass():
@@ -259,7 +275,6 @@ def test_encode_dataclass():
     assert '{"bar": 123, "spam": "apple pie"}' == json.dumps(f, default=pydantic_encoder)
 
 
-@pytest.mark.xfail(reason='dataclasses not implemented')
 def test_encode_pydantic_dataclass():
     @pydantic_dataclass
     class Foo:
@@ -267,7 +282,7 @@ def test_encode_pydantic_dataclass():
         spam: str
 
     f = Foo(bar=123, spam='apple pie')
-    assert '{"bar": 123, "spam": "apple pie"}' == json.dumps(f, default=pydantic_encoder)
+    assert json.dumps(f, default=pydantic_encoder) == '{"bar": 123, "spam": "apple pie"}'
 
 
 def test_json_nested_encode_models():
@@ -282,15 +297,15 @@ def test_json_nested_encode_models():
         phone: Phone
         friend: Optional['User'] = None
 
-        @serializer('birthday')
+        @field_serializer('birthday')
         def serialize_birthday(self, v: datetime, _info):
             return v.timestamp()
 
-        @serializer('phone', when_used='unless-none')
+        @field_serializer('phone', when_used='unless-none')
         def serialize_phone(self, v: Phone, _info):
             return v.number
 
-        @serializer('friend', when_used='unless-none')
+        @field_serializer('friend', when_used='unless-none')
         def serialize_user(self, v, _info):
             return v.SSN
 
@@ -304,13 +319,13 @@ def test_json_nested_encode_models():
 
     timon.friend = pumbaa
 
-    assert iphone.model_dump_json() == b'{"manufacturer":"Apple","number":18002752273}'
+    assert iphone.model_dump_json() == '{"manufacturer":"Apple","number":18002752273}'
     assert (
         pumbaa.model_dump_json()
-        == b'{"name":"Pumbaa","SSN":234,"birthday":737424000.0,"phone":18007267864,"friend":null}'
+        == '{"name":"Pumbaa","SSN":234,"birthday":737424000.0,"phone":18007267864,"friend":null}'
     )
     assert (
-        timon.model_dump_json() == b'{"name":"Timon","SSN":123,"birthday":738892800.0,"phone":18002752273,"friend":234}'
+        timon.model_dump_json() == '{"name":"Timon","SSN":123,"birthday":738892800.0,"phone":18002752273,"friend":234}'
     )
 
 
@@ -321,7 +336,7 @@ def test_custom_encode_fallback_basemodel():
     class Foo(BaseModel):
         x: MyExoticType
 
-        @serializer('x')
+        @field_serializer('x')
         def serialize_x(self, _v: MyExoticType, _info):
             return 'exo'
 
@@ -330,7 +345,7 @@ def test_custom_encode_fallback_basemodel():
     class Bar(BaseModel):
         foo: Foo
 
-    assert Bar(foo=Foo(x=MyExoticType())).model_dump_json() == b'{"foo":{"x":"exo"}}'
+    assert Bar(foo=Foo(x=MyExoticType())).model_dump_json() == '{"foo":{"x":"exo"}}'
 
 
 def test_recursive(create_module):
@@ -348,4 +363,140 @@ class Model(BaseModel):
     )
     M = module.Model
 
-    assert M(value=1, nested=M(value=2)).model_dump_json(exclude_none=True) == b'{"value":1,"nested":{"value":2}}'
+    assert M(value=1, nested=M(value=2)).model_dump_json(exclude_none=True) == '{"value":1,"nested":{"value":2}}'
+
+
+def test_resolve_ref_schema_recursive_model():
+    class Model(BaseModel):
+        mini_me: Union['Model', None]
+
+        @classmethod
+        def __get_pydantic_json_schema__(
+            cls, core_schema: CoreSchema, handler: GetJsonSchemaHandler
+        ) -> JsonSchemaValue:
+            json_schema = super().__get_pydantic_json_schema__(core_schema, handler)
+            json_schema = handler.resolve_ref_schema(json_schema)
+            json_schema['examples'] = {'foo': {'mini_me': None}}
+            return json_schema
+
+    # insert_assert(Model.model_json_schema())
+    assert Model.model_json_schema() == {
+        '$defs': {
+            'Model': {
+                'examples': {'foo': {'mini_me': None}},
+                'properties': {'mini_me': {'anyOf': [{'$ref': '#/$defs/Model'}, {'type': 'null'}]}},
+                'required': ['mini_me'],
+                'title': 'Model',
+                'type': 'object',
+            }
+        },
+        'allOf': [{'$ref': '#/$defs/Model'}],
+    }
+
+
+def test_custom_json_encoder_config():
+    class Model(BaseModel):
+        x: timedelta
+        y: Decimal
+        z: date
+
+        model_config = ConfigDict(
+            json_encoders={timedelta: lambda v: f'{v.total_seconds():0.3f}s', Decimal: lambda v: 'a decimal'}
+        )
+
+    assert json.loads(Model(x=123, y=5, z='2032-06-01').model_dump_json()) == {
+        'x': '123.000s',
+        'y': 'a decimal',
+        'z': '2032-06-01',
+    }
+
+
+def test_custom_iso_timedelta():
+    class Model(BaseModel):
+        x: timedelta
+        model_config = ConfigDict(json_encoders={timedelta: lambda _: 'P0DT0H2M3.000000S'})
+
+    m = Model(x=321)
+    assert json.loads(m.model_dump_json()) == {'x': 'P0DT0H2M3.000000S'}
+
+
+def test_json_encoders_config_simple_inheritance():
+    """json_encoders is not "inheritable", this is different than v1 but much simpler"""
+
+    class Parent(BaseModel):
+        dt: datetime = datetime.now()
+        timedt: timedelta = timedelta(hours=100)
+
+        model_config = ConfigDict(json_encoders={timedelta: lambda _: 'parent_encoder'})
+
+    class Child(Parent):
+        model_config = ConfigDict(json_encoders={datetime: lambda _: 'child_encoder'})
+
+    # insert_assert(Child().model_dump())
+    assert json.loads(Child().model_dump_json()) == {'dt': 'child_encoder', 'timedt': 'P4DT4H'}
+
+
+def test_custom_iso_timedelta_annotated():
+    class Model(BaseModel):
+        # the json_encoders config applies to the type but the annotation overrides it
+        y: timedelta
+        x: Annotated[timedelta, AfterValidator(lambda x: x), PlainSerializer(lambda _: 'P0DT0H1M2.000000S')]
+        model_config = ConfigDict(json_encoders={timedelta: lambda _: 'P0DT0H2M3.000000S'})
+
+    m = Model(x=321, y=456)
+    assert json.loads(m.model_dump_json()) == {'x': 'P0DT0H1M2.000000S', 'y': 'P0DT0H2M3.000000S'}
+
+
+def test_json_encoders_on_model() -> None:
+    """Make sure that applying json_encoders to a BaseModel
+    does not edit its schema in place.
+    """
+
+    class Model(BaseModel):
+        x: int
+
+    class Outer1(BaseModel):
+        m: Model
+        model_config = ConfigDict(json_encoders={Model: lambda x: 'encoded!'})
+
+    class Outer2(BaseModel):
+        m: Model
+
+    class Outermost(BaseModel):
+        inner: Union[Outer1, Outer2]
+
+    m = Outermost(inner=Outer1(m=Model(x=1)))
+    # insert_assert(m.model_dump())
+    assert json.loads(m.model_dump_json()) == {'inner': {'m': 'encoded!'}}
+
+    m = Outermost(inner=Outer2(m=Model(x=1)))
+    # insert_assert(m.model_dump())
+    assert json.loads(m.model_dump_json()) == {'inner': {'m': {'x': 1}}}
+
+
+def test_json_encoders_not_used_for_python_dumps() -> None:
+    class Model(BaseModel):
+        x: int
+        model_config = ConfigDict(json_encoders={int: lambda x: 'encoded!'})
+
+    m = Model(x=1)
+    assert m.model_dump() == {'x': 1}
+    assert m.model_dump_json() == '{"x":"encoded!"}'
+
+
+def test_json_encoders_types() -> None:
+    class MyEnum(Enum):
+        A = 'a'
+        B = 'b'
+
+    class A(BaseModel):
+        a: MyEnum
+        b: List[int]
+        c: Decimal
+        model_config = ConfigDict(
+            json_encoders={Enum: lambda val: val.name, List[int]: lambda val: 'list!', Decimal: lambda val: 'decimal!'}
+        )
+
+    m = A(a=MyEnum.A, b=[1, 2, 3], c=Decimal('0'))
+    assert m.model_dump_json() == '{"a":"A","b":"list!","c":"decimal!"}'
+    assert m.model_dump() == {'a': MyEnum.A, 'b': [1, 2, 3], 'c': Decimal('0')}

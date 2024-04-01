@@ -1,8 +1,7 @@
 from typing import Any, Generic, List, Optional, Set, TypeVar, Union
 
-from pydantic import BaseModel, Extra, Field, validator
+from pydantic import BaseModel, Extra, Field, field_validator
 from pydantic.dataclasses import dataclass
-from pydantic.generics import GenericModel
 
 
 class Model(BaseModel):
@@ -25,7 +24,6 @@ model = Model(x=1, y='y', z='z')
 model = Model(x=1)
 model.y = 'a'
 Model.from_orm({})
-Model.from_orm({})  # type: ignore[pydantic-orm]
 
 
 class KwargsModel(BaseModel, alias_generator=None, frozen=True, extra=Extra.forbid):
@@ -40,7 +38,6 @@ kwargs_model = KwargsModel(x=1, y='y', z='z')
 kwargs_model = KwargsModel(x=1)
 kwargs_model.y = 'a'
 KwargsModel.from_orm({})
-KwargsModel.from_orm({})  # type: ignore[pydantic-orm]
 
 
 class ForbidExtraModel(BaseModel):
@@ -138,7 +135,7 @@ class Blah(BaseModel):
 T = TypeVar('T')
 
 
-class Response(GenericModel, Generic[T]):
+class Response(BaseModel, Generic[T]):
     data: T
     error: Optional[str]
 
@@ -299,7 +296,7 @@ class FieldDefaultTestingModel(BaseModel):
 class ModelWithAnnotatedValidator(BaseModel):
     name: str
 
-    @validator('name')
+    @field_validator('name')
     def noop_validator_with_annotations(self, name: str) -> str:
         # This is a mistake: the first argument to a validator is the class itself,
         # like a classmethod.
